@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Multi-Agent Platform</title>
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/editor/editor.main.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f0f11; color: #e1e1e6; margin: 30px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+        input, textarea, select, button { width: 100%; box-sizing: border-box; margin-bottom: 12px; padding: 12px; background: #18181c; color: #fff; border: 1px solid #2d2d34; border-radius: 6px; }
+        button { background: #2563eb; font-weight: bold; cursor: pointer; border: none; }
+        button:hover { background: #1d4ed8; }
+        button:disabled { background: #374151; cursor: not-allowed; }
+        .panel { background: #141417; padding: 20px; border-radius: 8px; border: 1px solid #232329; }
+        #editor { width: 100%; height: 500px; border-radius: 6px; overflow: hidden; border: 1px solid #2d2d34; }
+        pre { background: #0b0b0d; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; border: 1px solid #1c1c21; max-height: 250px; }
+        .hint { font-size: 12px; color: #9ca3af; margin-top: -8px; margin-bottom: 12px; }
+        .row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .row input[type="checkbox"] { width: auto; margin: 0; }
+        .row label { margin: 0; font-size: 14px; }
+        .secondary { background: #374151; margin-top: 0; }
+        .secondary:hover { background: #4b5563; }
+        .export-path { font-size: 12px; color: #86efac; word-break: break-all; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+    <h2>Autonomous Software Agency Control Panel</h2>
+    <p class="hint">Backend: <code id="apiBase">http://localhost:8000</code> — open via <a href="http://localhost:8000/" style="color:#60a5fa">http://localhost:8000/</a> or double-click this file</p>
+
+    <div class="grid">
+        <div class="panel">
+            <label>Secure Groq Authentication Token</label>
+            <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off">
+
+            <label>Project Operational Scope</label>
+            <select id="projectType">
+                <option value="server">Server Infrastructure Project (App, Dockerfile, Compose)</option>
+                <option value="script">Standalone Python Utility Script</option>
+            </select>
+
+            <label>Product Requirements &amp; Constraints</label>
+            <textarea id="prompt" rows="5" placeholder="Build an API server that tracks system memory usage and provides a clean JSON endpoint at port 8080. If memory usage is above 85 percent, return a warning flag."></textarea>
+
+            <label>Export folder name (optional)</label>
+            <input type="text" id="exportFolder" placeholder="my-generated-app">
+
+            <div class="row">
+                <input type="checkbox" id="autoExport" checked>
+                <label for="autoExport">Auto-save deliverables to <code>generated-projects/</code></label>
+            </div>
+
+            <button id="launchBtn" onclick="dispatchProject()">Launch Agency Pipeline</button>
+            <button id="exportBtn" class="secondary" onclick="exportToDisk()" disabled>Re-export to disk</button>
+
+            <h4>Executive Status Logs</h4>
+            <div id="status">System idle. Ready to initialize agency sprint.</div>
+
+            <h4>Financial &amp; Architectural Audit</h4>
+            <pre id="auditLog">No active project metadata loaded.</pre>
+        </div>
+
+        <div class="panel">
+            <h4>Output Workspace Repository</h4>
+            <div id="editor"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+        const API_BASE = (window.location.protocol === 'file:' || !window.location.port)
+            ? 'http://localhost:8000'
+            : window.location.origin;
+        document.getElementById('apiBase').textContent = API_BASE;
+
+        let codeEditor;
+        let lastPipelineResult = null;
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+        require(['vs/editor/editor.main'], function() {
+            codeEditor = monaco.editor.create(document.getElementById('editor'), {
+                value: "# Code, Dockerfiles, and orchestration matrices appear here autonomously...",
+                language: 'python',
+                theme: 'vs-dark',
+                automaticLayout: true
+            });
+        });
+
+        function showExportInfo(data) {
+            const statusBox = document.getElementById('status');
+            if (!data.export) return;
+            const deploy = data.deploy_hint
+                ? `<div class="export-path"><b>Saved:</b> ${data.export.output_dir}<br><b>Deploy:</b> <code>${data.deploy_hint}</code></div>`
+                : `<div class="export-path"><b>Saved:</b> ${data.export.output_dir}</div>`;
+            statusBox.innerHTML += deploy;
+        }
+
+        async function exportToDisk() {
+            if (!lastPipelineResult) return;
+            const type = document.getElementById('projectType').value;
+            const exportFolder = document.getElementById('exportFolder').value.trim() || null;
+            const statusBox = document.getElementById('status');
+            const exportBtn = document.getElementById('exportBtn');
+
+            exportBtn.disabled = true;
+            try {
+                const body = {
+                    project_type: type,
+                    export_folder_name: exportFolder,
+                    deployment_package: lastPipelineResult.deployment_package || null,
+                    code_output: lastPipelineResult.code_output || null
+                };
+                const response = await fetch(`${API_BASE}/v1/agency/export`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const text = await response.text();
+                if (!response.ok) throw new Error(text);
+                const data = JSON.parse(text);
+                statusBox.innerHTML = `<b>Re-exported to disk.</b>`;
+                showExportInfo(data);
+            } catch (err) {
+                statusBox.innerHTML = `<b>Export failed:</b> ${err.message}`;
+            } finally {
+                exportBtn.disabled = false;
+            }
+        }
+
+        async function dispatchProject() {
+            const key = document.getElementById('apiKey').value.trim();
+            const prompt = document.getElementById('prompt').value.trim();
+            const type = document.getElementById('projectType').value;
+            const autoExport = document.getElementById('autoExport').checked;
+            const exportFolder = document.getElementById('exportFolder').value.trim() || null;
+            const statusBox = document.getElementById('status');
+            const auditBox = document.getElementById('auditLog');
+            const launchBtn = document.getElementById('launchBtn');
+            const exportBtn = document.getElementById('exportBtn');
+
+            if (!key || !prompt) {
+                alert('Missing API Token or Project Prompt.');
+                return;
+            }
+
+            launchBtn.disabled = true;
+            statusBox.innerHTML = '<b>Pipeline Triggered:</b> CFO estimating budget, Architect mapping SOP rules, Dev building loops...';
+
+            try {
+                const response = await fetch(`${API_BASE}/v1/agency/execute`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Groq-Key': key
+                    },
+                    body: JSON.stringify({
+                        user_prompt: prompt,
+                        project_type: type,
+                        auto_export: autoExport,
+                        export_folder_name: exportFolder
+                    })
+                });
+
+                const text = await response.text();
+                if (!response.ok) {
+                    let detail = text;
+                    try {
+                        const errJson = JSON.parse(text);
+                        detail = errJson.detail || text;
+                    } catch (_) {}
+                    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+                }
+
+                const data = JSON.parse(text);
+                lastPipelineResult = data;
+                exportBtn.disabled = false;
+                statusBox.innerHTML = `<b>Pipeline Executed:</b> ${data.status}`;
+                showExportInfo(data);
+                auditBox.innerText = JSON.stringify({
+                    budget_audit: data.audit,
+                    structural_architecture: data.architecture
+                }, null, 2);
+
+                if (type === 'server') {
+                    const pkg = data.deployment_package;
+                    const combinedRepoView = [
+                        '### ====== AUTONOMOUS SERVER PRODUCTION REPOSITORY ====== ###',
+                        '',
+                        '### 1. APPLICATION SOURCE (app.py)',
+                        pkg.application_code,
+                        '',
+                        '### 2. SERVER BLUEPRINT (Dockerfile)',
+                        pkg.dockerfile_contents,
+                        '',
+                        '### 3. CONTAINER ORCHESTRATOR (docker-compose.yml)',
+                        pkg.docker_compose_contents,
+                        '',
+                        '### 4. DEPLOYMENT STEPS',
+                        (pkg.deployment_commands || []).join('\n')
+                    ].join('\n');
+                    codeEditor.setValue(combinedRepoView);
+                } else {
+                    codeEditor.setValue(data.code_output || '');
+                }
+            } catch (err) {
+                statusBox.innerHTML = '<b>Pipeline Crashed:</b> Error compiling code infrastructure. Check API key, Groq quota, and Docker Desktop.';
+                auditBox.innerText = err.message;
+            } finally {
+                launchBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
