@@ -42,5 +42,6 @@ echo Press Ctrl+C to stop.
 echo.
 
 python -m uvicorn server:app --reload --host 127.0.0.1 --port 8000
+REM Use "python -m uvicorn" — bare "uvicorn" may not be on PATH (same as Render).
 
 pause

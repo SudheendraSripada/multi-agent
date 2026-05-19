@@ -1,0 +1,2 @@
+# Render and other hosts expect requirements.txt at repo root.
+-r requirements-agency.txt

@@ -43,6 +43,15 @@ docker compose up --build
 - [Groq API key](https://console.groq.com/)
 - Docker Desktop (optional; QA runs in simulation mode without it)
 
+## Deploy on Render
+
+| Setting | Value |
+|---------|--------|
+| **Build Command** | `pip install -r requirements-agency.txt` |
+| **Start Command** | `python -m uvicorn server:app --host 0.0.0.0 --port $PORT` |
+
+Use `python -m uvicorn` (not bare `uvicorn`) so the start phase finds the installed package. A `render.yaml` in this repo sets these automatically on blueprint deploys.
+
 ## License
 
 MIT
