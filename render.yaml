@@ -3,5 +3,5 @@ services:
     name: multi-agent
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements-agency.txt
+    buildCommand: python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements-agency.txt
     startCommand: bash start.sh

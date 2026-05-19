@@ -47,10 +47,10 @@ docker compose up --build
 
 | Setting | Value |
 |---------|--------|
-| **Build Command** | `pip install -r requirements-agency.txt` |
+| **Build Command** | `python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements-agency.txt` |
 | **Start Command** | `bash start.sh` |
 
-Do **not** use bare `uvicorn` or `python` — Render’s Linux image provides `python3` only. `start.sh` picks `python3` and runs `uvicorn` as a module. A `render.yaml` in this repo sets these automatically on blueprint deploys.
+Build installs into `.venv/`; start uses `.venv/bin/python` (system `python3` does not see those packages). A `render.yaml` in this repo sets these automatically on blueprint deploys.
 
 ## License
 
