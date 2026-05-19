@@ -48,9 +48,9 @@ docker compose up --build
 | Setting | Value |
 |---------|--------|
 | **Build Command** | `pip install -r requirements-agency.txt` |
-| **Start Command** | `python -m uvicorn server:app --host 0.0.0.0 --port $PORT` |
+| **Start Command** | `bash start.sh` |
 
-Use `python -m uvicorn` (not bare `uvicorn`) so the start phase finds the installed package. A `render.yaml` in this repo sets these automatically on blueprint deploys.
+Do **not** use bare `uvicorn` or `python` — Render’s Linux image provides `python3` only. `start.sh` picks `python3` and runs `uvicorn` as a module. A `render.yaml` in this repo sets these automatically on blueprint deploys.
 
 ## License
 
