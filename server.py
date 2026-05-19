@@ -6,11 +6,16 @@ import re
 from datetime import datetime, timezone
 
 import docker
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from groq import Groq
 from pydantic import BaseModel
+
+import memory_store
+from codex_api import router as codex_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,7 +27,18 @@ log = logging.getLogger("agency")
 WORKSPACE_ROOT = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_OUTPUT_ROOT = os.path.join(WORKSPACE_ROOT, "generated-projects")
 
-app = FastAPI(title="Autonomous Multi-Agent AI Software Agency")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    memory_store.init_db()
+    log.info("Codex memory database ready.")
+    yield
+
+
+app = FastAPI(
+    title="Codex Agency — Multi-Agent AI Platform",
+    lifespan=lifespan,
+)
+app.include_router(codex_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -297,13 +313,23 @@ def export_project_to_disk(
     return {"output_dir": output_dir, "files": saved_files}
 
 
+def _html(name: str) -> FileResponse:
+    path = os.path.join(WORKSPACE_ROOT, name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail=f"{name} not found")
+    return FileResponse(path)
+
+
 @app.get("/")
-async def serve_dashboard():
-    """Serve the management control dashboard."""
-    index_path = os.path.join(os.path.dirname(__file__), "index.html")
-    if not os.path.isfile(index_path):
-        raise HTTPException(status_code=404, detail="index.html not found")
-    return FileResponse(index_path)
+async def serve_codex():
+    """Codex-style workspace (chat, memory, GitHub, editor)."""
+    return _html("codex.html")
+
+
+@app.get("/agency")
+async def serve_agency_dashboard():
+    """Classic multi-agent pipeline control panel."""
+    return _html("index.html")
 
 
 @app.post("/v1/agency/export")

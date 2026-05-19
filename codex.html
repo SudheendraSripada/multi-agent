@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex Agency</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/editor/editor.main.min.css">
+  <style>
+    :root {
+      --bg: #0d0d0f; --panel: #141417; --border: #2a2a32;
+      --text: #e4e4e7; --muted: #9ca3af; --accent: #3b82f6; --accent-h: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+    .app { display: grid; grid-template-columns: 220px 1fr 380px; height: 100vh; }
+    .sidebar { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 12px; gap: 8px; }
+    .sidebar h1 { font-size: 15px; margin: 0 0 8px; }
+    .sidebar a { color: var(--muted); font-size: 12px; }
+    .session-list { flex: 1; overflow-y: auto; }
+    .session-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-bottom: 4px; border: 1px solid transparent; }
+    .session-item:hover, .session-item.active { background: #1e1e24; border-color: var(--border); }
+    .main { display: flex; flex-direction: column; min-width: 0; }
+    .topbar { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .topbar select, .topbar input { background: #1a1a1f; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+    .topbar input[type=password] { min-width: 140px; }
+    .chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .msg { max-width: 92%; padding: 12px 14px; border-radius: 10px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .msg.user { align-self: flex-end; background: #1e3a5f; border: 1px solid #2563eb44; }
+    .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+    .composer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+    .composer textarea { flex: 1; min-height: 56px; max-height: 160px; resize: vertical; background: #1a1a1f; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px; font-family: inherit; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h1>Codex Agency</h1>
+    <a href="/agency">Classic agency pipeline →</a>
+    <button id="newSession" style="width:100%;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">+ New session</button>
+    <div class="session-list" id="sessionList"></div>
+  </aside>
+
+  <section class="main">
+    <div class="topbar">
+      <select id="provider"></select>
+      <input id="model" placeholder="model id" style="min-width:180px">
+      <input id="apiKey" type="password" placeholder="AI API key (gsk_ / sk- ...)" style="flex:1;max-width:220px">
+      <input id="githubToken" type="password" placeholder="GitHub PAT (optional)" style="max-width:160px">
+    </div>
+    <div id="chat" class="chat"></div>
+    <div class="composer">
+      <textarea id="input" placeholder="Ask anything — code, architecture, GitHub changes, project memory..."></textarea>
+      <button id="send" style="padding:0 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Send</button>
+    </div>
+  </section>
+
+  <aside class="right" style="background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;min-width:0;">
+    <div class="tabs" style="display:flex;border-bottom:1px solid var(--border);">
+      <button class="tab active" data-tab="editor">Editor</button>
+      <button class="tab" data-tab="memory">Memory</button>
+      <button class="tab" data-tab="github">GitHub</button>
+    </div>
+    <div id="panel-editor" class="panel" style="flex:1;display:flex;flex-direction:column;padding:8px;min-height:0;">
+      <div class="editor-wrap" style="position:relative;flex:1;min-height:200px;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+        <div id="editor" style="position:absolute;inset:0;"></div>
+      </div>
+    </div>
+    <div id="panel-memory" class="panel" style="display:none;flex:1;padding:12px;overflow:auto;">
+      <button id="addMemory" style="margin-bottom:8px;width:100%;padding:6px;">+ Add memory</button>
+      <pre id="memoryList" style="font-size:12px;white-space:pre-wrap;"></pre>
+    </div>
+    <div id="panel-github" class="panel" style="display:none;flex:1;padding:12px;overflow:auto;font-size:13px;">
+      <input id="ghOwner" placeholder="owner" style="width:48%;margin-bottom:6px;">
+      <input id="ghRepo" placeholder="repo" style="width:48%;margin-bottom:6px;">
+      <input id="ghBranch" placeholder="branch" value="main" style="width:100%;margin-bottom:6px;">
+      <button id="linkRepo" style="width:100%;margin-bottom:8px;padding:6px;">Link to session</button>
+      <button id="loadTree" style="width:100%;margin-bottom:8px;padding:6px;">Load file tree</button>
+      <ul id="fileTree" style="list-style:none;padding:0;margin:0;max-height:200px;overflow:auto;"></ul>
+      <button id="commitEditor" style="width:100%;margin-top:8px;padding:6px;background:#166534;color:#fff;border:none;border-radius:6px;">Commit editor → GitHub</button>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const API = window.location.origin;
+const store = {
+  get k() { return JSON.parse(localStorage.getItem('codex-keys') || '{}'); },
+  set k(v) { localStorage.setItem('codex-keys', JSON.stringify(v)); },
+  load() {
+    const k = this.k;
+    document.getElementById('apiKey').value = k.apiKey || '';
+    document.getElementById('githubToken').value = k.githubToken || '';
+    document.getElementById('provider').value = k.provider || 'groq';
+    document.getElementById('model').value = k.model || '';
+  },
+  save() {
+    this.k = {
+      apiKey: document.getElementById('apiKey').value.trim(),
+      githubToken: document.getElementById('githubToken').value.trim(),
+      provider: document.getElementById('provider').value,
+      model: document.getElementById('model').value.trim(),
+    };
+  }
+};
+
+let sessionId = null;
+let codeEditor = null;
+let providers = [];
+
+function headers(extra = {}) {
+  store.save();
+  const k = store.k;
+  const h = { 'Content-Type': 'application/json', ...extra };
+  if (k.apiKey) h['X-Api-Key'] = k.apiKey;
+  if (k.githubToken) h['X-Github-Token'] = k.githubToken;
+  return h;
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: headers(opts.headers || {}) });
+  const t = await r.text();
+  if (!r.ok) {
+    try {
+      const j = JSON.parse(t);
+      const d = j.detail;
+      throw new Error(typeof d === 'string' ? d : JSON.stringify(d));
+    } catch (e) { if (e instanceof Error && e.message !== t) throw e; throw new Error(t); }
+  }
+  return JSON.parse(t);
+}
+
+function renderChat(messages) {
+  const el = document.getElementById('chat');
+  el.innerHTML = messages.map(m => {
+    const body = m.role === 'assistant' && typeof marked !== 'undefined'
+      ? marked.parse(m.content) : escapeHtml(m.content);
+    return `<div class="msg ${m.role}">${body}</div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadProviders() {
+  const data = await api('/v1/codex/providers', { method: 'GET', headers: {} });
+  providers = data.providers;
+  const sel = document.getElementById('provider');
+  sel.innerHTML = providers.map(p => `<option value="${p.id}">${p.id}</option>`).join('');
+  const k = store.k;
+  if (k.provider) sel.value = k.provider;
+  sel.onchange = () => {
+    const p = providers.find(x => x.id === sel.value);
+    if (p && !document.getElementById('model').value)
+      document.getElementById('model').value = p.default_model;
+  };
+  if (!document.getElementById('model').value && providers[0])
+    document.getElementById('model').value = providers[0].default_model;
+}
+
+async function loadSessions() {
+  const data = await api('/v1/codex/sessions');
+  const list = document.getElementById('sessionList');
+  list.innerHTML = data.sessions.map(s =>
+    `<div class="session-item ${s.id===sessionId?'active':''}" data-id="${s.id}">${escapeHtml(s.title)}</div>`
+  ).join('');
+  list.querySelectorAll('.session-item').forEach(el => {
+    el.onclick = () => selectSession(el.dataset.id);
+  });
+}
+
+async function selectSession(id) {
+  sessionId = id;
+  await loadSessions();
+  const data = await api(`/v1/codex/sessions/${id}/messages`);
+  renderChat(data.messages);
+  await refreshMemory();
+  const sess = await api(`/v1/codex/sessions/${id}`);
+  document.getElementById('provider').value = sess.provider;
+  document.getElementById('model').value = sess.model;
+}
+
+async function newSession() {
+  const title = prompt('Session title', 'New project') || 'New project';
+  const provider = document.getElementById('provider').value;
+  const model = document.getElementById('model').value;
+  const s = await api('/v1/codex/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ title, provider, model: model || null })
+  });
+  sessionId = s.id;
+  await loadSessions();
+  document.getElementById('chat').innerHTML = '';
+}
+
+async function sendMessage() {
+  if (!sessionId) await newSession();
+  const text = document.getElementById('input').value.trim();
+  if (!text) return;
+  if (!store.k.apiKey) { alert('Add your AI provider API key.'); return; }
+
+  const chat = document.getElementById('chat');
+  chat.innerHTML += `<div class="msg user">${escapeHtml(text)}</div>`;
+  document.getElementById('input').value = '';
+  document.getElementById('send').disabled = true;
+
+  try {
+    const data = await api('/v1/codex/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: sessionId,
+        message: text,
+        provider: document.getElementById('provider').value,
+        model: document.getElementById('model').value || null
+      })
+    });
+    const body = typeof marked !== 'undefined' ? marked.parse(data.reply) : escapeHtml(data.reply);
+    chat.innerHTML += `<div class="msg assistant">${body}</div>`;
+    chat.scrollTop = chat.scrollHeight;
+    extractCodeToEditor(data.reply);
+    await refreshMemory();
+  } catch (e) {
+    chat.innerHTML += `<div class="msg assistant" style="color:#fca5a5">${escapeHtml(e.message)}</div>`;
+  } finally {
+    document.getElementById('send').disabled = false;
+  }
+}
+
+function extractCodeToEditor(text) {
+  const m = text.match(/```[\w]*\n([\s\S]*?)```/);
+  if (m && codeEditor) codeEditor.setValue(m[1].trim());
+}
+
+async function refreshMemory() {
+  if (!sessionId) return;
+  const data = await api(`/v1/codex/sessions/${sessionId}/memory`);
+  document.getElementById('memoryList').textContent = data.memories.length
+    ? data.memories.map(m => `${m.key}: ${m.value}`).join('\n')
+    : '(empty — agent can store MEMO: key=value lines)';
+}
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.style.cssText = 'flex:1;padding:10px;background:transparent;border:none;color:var(--muted);cursor:pointer;';
+  btn.onclick = () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    btn.style.color = 'var(--text)';
+    ['editor','memory','github'].forEach(t => {
+      document.getElementById('panel-'+t).style.display = t === btn.dataset.tab ? 'flex' : 'none';
+    });
+  };
+});
+document.querySelector('.tab.active').style.color = 'var(--text)';
+
+document.getElementById('newSession').onclick = newSession;
+document.getElementById('send').onclick = sendMessage;
+document.getElementById('input').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+
+document.getElementById('addMemory').onclick = async () => {
+  if (!sessionId) return;
+  const key = prompt('Memory key'); if (!key) return;
+  const value = prompt('Value'); if (value == null) return;
+  await api(`/v1/codex/sessions/${sessionId}/memory`, { method: 'POST', body: JSON.stringify({ key, value }) });
+  refreshMemory();
+};
+
+document.getElementById('linkRepo').onclick = async () => {
+  if (!sessionId) return;
+  const owner = document.getElementById('ghOwner').value.trim();
+  const repo = document.getElementById('ghRepo').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim() || 'main';
+  await api(`/v1/codex/sessions/${sessionId}/github`, {
+    method: 'POST', body: JSON.stringify({ owner, repo, branch })
+  });
+  alert('Repo linked to session.');
+};
+
+document.getElementById('loadTree').onclick = async () => {
+  const owner = document.getElementById('ghOwner').value.trim();
+  const repo = document.getElementById('ghRepo').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim() || 'main';
+  const data = await api(`/v1/codex/github/${owner}/${repo}/tree?branch=${branch}`);
+  const ul = document.getElementById('fileTree');
+  ul.innerHTML = data.files.map(f =>
+    `<li style="padding:4px 0;cursor:pointer" data-path="${f.path}">${f.path}</li>`
+  ).join('');
+  ul.querySelectorAll('li').forEach(li => {
+    li.onclick = async () => {
+      const file = await api(`/v1/codex/github/${owner}/${repo}/file?path=${encodeURIComponent(li.dataset.path)}&branch=${branch}`);
+      if (codeEditor) codeEditor.setValue(file.content);
+    };
+  });
+};
+
+document.getElementById('commitEditor').onclick = async () => {
+  const owner = document.getElementById('ghOwner').value.trim();
+  const repo = document.getElementById('ghRepo').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim() || 'main';
+  const path = prompt('File path in repo', 'app.py');
+  if (!path || !codeEditor) return;
+  const message = prompt('Commit message', 'Update via Codex Agency') || 'Codex update';
+  await api(`/v1/codex/github/${owner}/${repo}/file`, {
+    method: 'POST',
+    body: JSON.stringify({ path, content: codeEditor.getValue(), message, branch })
+  });
+  alert('Committed to GitHub.');
+};
+
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+require(['vs/editor/editor.main'], () => {
+  codeEditor = monaco.editor.create(document.getElementById('editor'), {
+    value: '# Open a GitHub file or chat to generate code',
+    language: 'python',
+    theme: 'vs-dark',
+    automaticLayout: false
+  });
+  window.addEventListener('resize', () => codeEditor && codeEditor.layout());
+});
+
+store.load();
+loadProviders().then(loadSessions).catch(e => console.error(e));
+</script>
+</body>
+</html>

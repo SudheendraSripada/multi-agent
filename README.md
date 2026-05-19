@@ -1,57 +1,56 @@
-# Autonomous Multi-Agent AI Software Agency
+# Codex Agency
 
-Groq-powered enterprise pipeline: **CFO** → **Architect** → **Developer** (Docker QA loop) → **DevOps**, with a Monaco control-panel frontend and automatic export to disk.
+**Codex-style AI coding workspace** + **multi-agent software agency** — bring your own API key from any supported provider.
 
-## Quick start
+## Live UI
+
+| URL | What |
+|-----|------|
+| `/` | **Codex workspace** — chat, memory, GitHub, Monaco editor |
+| `/agency` | **Agency pipeline** — CFO → Architect → Developer → DevOps |
+
+## Quick start (local)
 
 ```powershell
 pip install -r requirements-agency.txt
 python -m uvicorn server:app --reload
 ```
 
-Open **http://localhost:8000/** — paste your [Groq API key](https://console.groq.com/), enter requirements, and click **Launch Agency Pipeline**.
+Open http://localhost:8000/
 
-Or on Windows, double-click `run-agency.bat`.
+1. Choose provider (Groq, OpenAI, Anthropic, OpenRouter)
+2. Paste your API key
+3. Optional: GitHub personal access token for repo integration
+4. **+ New session** → chat
 
-## What it does
-
-| Agent | Role |
-|-------|------|
-| CFO | Budget / token gate |
-| Architect | SOP, dependencies, verification tests |
-| Developer | Code + up to 3 QA self-heal loops |
-| DevOps | Dockerfile, compose, deploy commands (server projects) |
-
-Deliverables auto-save to `generated-projects/<timestamp>-<name>/` (`app.py`, `Dockerfile`, `docker-compose.yml`, `DEPLOY.md`).
-
-## Deploy generated server
-
-```powershell
-cd generated-projects\<your-folder>
-docker compose up --build
-```
-
-## API
-
-- `GET /` — Dashboard
-- `POST /v1/agency/execute` — Full pipeline (header: `X-Groq-Key`)
-- `POST /v1/agency/export` — Re-export last result to disk
-
-## Requirements
-
-- Python 3.11+
-- [Groq API key](https://console.groq.com/)
-- Docker Desktop (optional; QA runs in simulation mode without it)
+See [CODEX.md](CODEX.md) for full API and features.
 
 ## Deploy on Render
 
 | Setting | Value |
 |---------|--------|
-| **Build Command** | `python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements-agency.txt` |
-| **Start Command** | `bash start.sh` |
+| **Build** | `python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements-agency.txt` |
+| **Start** | `bash start.sh` |
 
-Build installs into `.venv/`; start uses `.venv/bin/python` (system `python3` does not see those packages). A `render.yaml` in this repo sets these automatically on blueprint deploys.
+## Providers (BYOK)
 
-## License
+No keys on the server — users supply:
+
+- **AI:** `X-Api-Key` (Groq `gsk_`, OpenAI `sk-`, Anthropic, OpenRouter)
+- **GitHub:** `X-Github-Token` (optional PAT)
+
+## What's included vs full Codex
+
+| Feature | Status |
+|---------|--------|
+| Chat agent + markdown | ✅ |
+| Multi-provider API keys | ✅ |
+| Session memory (SQLite) | ✅ |
+| GitHub read / commit files | ✅ |
+| Monaco editor | ✅ |
+| Agency multi-agent pipeline | ✅ `/agency` |
+| Streaming | 🔜 |
+| Server-side file sandbox | 🔜 |
+| GitHub OAuth | 🔜 |
 
 MIT

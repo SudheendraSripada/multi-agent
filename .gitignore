@@ -65,6 +65,7 @@ Thumbs.db
 
 # Agency platform generated output
 generated-projects/
+data/
 venv-agency/
 
 # Project specific
