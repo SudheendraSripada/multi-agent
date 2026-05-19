@@ -13,8 +13,19 @@
         button { background: #2563eb; font-weight: bold; cursor: pointer; border: none; }
         button:hover { background: #1d4ed8; }
         button:disabled { background: #374151; cursor: not-allowed; }
-        .panel { background: #141417; padding: 20px; border-radius: 8px; border: 1px solid #232329; }
-        #editor { width: 100%; height: 500px; border-radius: 6px; overflow: hidden; border: 1px solid #2d2d34; }
+        .panel { background: #141417; padding: 20px; border-radius: 8px; border: 1px solid #232329; min-width: 0; }
+        .editor-panel { min-height: 0; overflow: hidden; }
+        .editor-wrap {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            min-height: 500px;
+            max-height: 70vh;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #2d2d34;
+        }
+        #editor { position: absolute; inset: 0; width: 100%; height: 100%; }
         pre { background: #0b0b0d; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; border: 1px solid #1c1c21; max-height: 250px; }
         .hint { font-size: 12px; color: #9ca3af; margin-top: -8px; margin-bottom: 12px; }
         .row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
@@ -62,9 +73,11 @@
             <pre id="auditLog">No active project metadata loaded.</pre>
         </div>
 
-        <div class="panel">
+        <div class="panel editor-panel">
             <h4>Output Workspace Repository</h4>
-            <div id="editor"></div>
+            <div class="editor-wrap">
+                <div id="editor"></div>
+            </div>
         </div>
     </div>
 
@@ -79,13 +92,26 @@
         let lastPipelineResult = null;
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+        function layoutEditor() {
+            if (codeEditor) codeEditor.layout();
+        }
+
+        let resizeTimer;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(layoutEditor, 150);
+        });
+
         require(['vs/editor/editor.main'], function() {
             codeEditor = monaco.editor.create(document.getElementById('editor'), {
                 value: "# Code, Dockerfiles, and orchestration matrices appear here autonomously...",
                 language: 'python',
                 theme: 'vs-dark',
-                automaticLayout: true
+                automaticLayout: false,
+                scrollBeyondLastLine: false,
+                minimap: { enabled: true }
             });
+            layoutEditor();
         });
 
         function showExportInfo(data) {
@@ -204,6 +230,7 @@
                 } else {
                     codeEditor.setValue(data.code_output || '');
                 }
+                layoutEditor();
             } catch (err) {
                 statusBox.innerHTML = '<b>Pipeline Crashed:</b> Error compiling code infrastructure. Check API key, Groq quota, and Docker Desktop.';
                 auditBox.innerText = err.message;
