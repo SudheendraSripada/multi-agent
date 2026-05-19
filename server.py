@@ -74,24 +74,54 @@ class ExportRequest(BaseModel):
     code_output: str | None = None
 
 
+def normalize_cfo_assessment(assessment: CfoAssessment, prompt: str) -> CfoAssessment:
+    """Avoid false rejections on normal engineering tasks."""
+    if assessment.approved:
+        return assessment
+    within_budget = assessment.estimated_tokens <= 120_000
+    reasonable_scope = len(prompt) <= 8000
+    routine_complexity = assessment.complexity_rating.lower() in {
+        "low",
+        "medium",
+        "moderate",
+        "simple",
+        "standard",
+    }
+    if within_budget and reasonable_scope and (routine_complexity or assessment.estimated_tokens <= 50_000):
+        log.info("[CFO] Auto-approved after routine-scope override (model was overly strict).")
+        return assessment.model_copy(update={"approved": True})
+    return assessment
+
+
 def cfo_agent_evaluation(client: Groq, prompt: str) -> CfoAssessment:
     """Phase 1: Financial & Token Resource Management Gatekeeper."""
     system_prompt = (
-        "You are the Chief Financial Officer Agent. Analyze the software engineering request. "
-        "Estimate the complexity and determine if it fits standard resource limits. "
-        "Return your analysis ONLY as a valid JSON object matching these exact keys: "
-        "'estimated_tokens' (int), 'complexity_rating' (str), 'approved' (bool)."
+        "You are the CFO Agent for a software development agency. "
+        "Approve standard software engineering work: REST APIs, CLI scripts, microservices, "
+        "Docker deployments, monitoring endpoints, and small-to-medium Python apps. "
+        "Set approved=true unless the request is abusive, illegal, or needs extreme unbounded resources. "
+        "Typical API/server/script tasks should be approved with complexity_rating low or medium. "
+        "Return ONLY valid JSON with keys: estimated_tokens (int), complexity_rating (str), approved (bool)."
     )
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Evaluate cost parameters for: {prompt}"},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.2,
-    )
-    return CfoAssessment(**json.loads(completion.choices[0].message.content))
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Evaluate cost parameters for: {prompt}"},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        assessment = CfoAssessment(**json.loads(completion.choices[0].message.content))
+    except Exception as exc:
+        log.warning("[CFO] Evaluation parse failed (%s) — defaulting to approved.", exc)
+        assessment = CfoAssessment(
+            estimated_tokens=8000,
+            complexity_rating="medium",
+            approved=True,
+        )
+    return normalize_cfo_assessment(assessment, prompt)
 
 
 def architect_agent_sop(client: Groq, prompt: str) -> ArchitectureSop:
@@ -321,7 +351,11 @@ async def execute_agency_workflow(request: IntakeRequest, x_groq_key: str = Head
         log.warning("[CFO] Project rejected — pipeline halted.")
         raise HTTPException(
             status_code=403,
-            detail="Project rejected by CFO due to resource bounds.",
+            detail={
+                "message": "Project rejected by CFO due to resource bounds.",
+                "cfo_audit": cfo_metrics.model_dump(),
+                "hint": "Shorten the prompt, reduce scope, or split into smaller tasks.",
+            },
         )
 
     log.info("[ARCHITECT] Drafting SOP, dependencies, and verification tests...")

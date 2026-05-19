@@ -34,6 +34,8 @@
         .secondary { background: #374151; margin-top: 0; }
         .secondary:hover { background: #4b5563; }
         .export-path { font-size: 12px; color: #86efac; word-break: break-all; margin-top: 8px; }
+        .error-box { color: #fca5a5; font-size: 14px; line-height: 1.5; }
+        .error-hint { color: #9ca3af; font-size: 12px; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -194,9 +196,14 @@
                     let detail = text;
                     try {
                         const errJson = JSON.parse(text);
-                        detail = errJson.detail || text;
+                        detail = errJson.detail ?? text;
                     } catch (_) {}
-                    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+                    const msg = typeof detail === 'string'
+                        ? detail
+                        : (detail.message || JSON.stringify(detail, null, 2));
+                    const err = new Error(msg);
+                    err.apiDetail = detail;
+                    throw err;
                 }
 
                 const data = JSON.parse(text);
@@ -232,8 +239,21 @@
                 }
                 layoutEditor();
             } catch (err) {
-                statusBox.innerHTML = '<b>Pipeline Crashed:</b> Error compiling code infrastructure. Check API key, Groq quota, and Docker Desktop.';
-                auditBox.innerText = err.message;
+                const msg = err.message || 'Unknown error';
+                const isCfo = /CFO|resource bounds/i.test(msg);
+                const isAuth = /401|API key|X-Groq-Key/i.test(msg);
+                let hint = 'Check your Groq API key and account quota at console.groq.com.';
+                if (isCfo) {
+                    hint = 'The CFO agent blocked this scope. Use a shorter, concrete prompt (e.g. one API with one endpoint).';
+                } else if (isAuth) {
+                    hint = 'Paste a valid gsk_... key from console.groq.com.';
+                }
+                statusBox.innerHTML =
+                    `<div class="error-box"><b>Pipeline failed:</b> ${msg}</div>` +
+                    `<div class="error-hint">${hint}</div>`;
+                auditBox.innerText = err.apiDetail
+                    ? JSON.stringify(err.apiDetail, null, 2)
+                    : msg;
             } finally {
                 launchBtn.disabled = false;
             }
